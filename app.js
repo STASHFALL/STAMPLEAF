@@ -155,7 +155,7 @@
           items: Object.entries(cart.items).map(([id, qty]) => ({ id, qty })),
         }),
       });
-      const data = await res.json().catch(() => ({}));
+      const res = await fetch("/api/checkout", {
       if (!res.ok || !data.url) throw new Error(data.error || "Checkout couldn't start. Please try again.");
       window.location.href = data.url;
     } catch (e) {
