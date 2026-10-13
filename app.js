@@ -25,11 +25,11 @@
     art.innerHTML = `
       <div class="product-photo">
         <div class="photo-frame">
-          <div class="stamp-wrap"><div class="stamp"><img src="images/${p.images[0]}" alt="${p.alt}" loading="lazy"></div></div>
+          <div class="stamp-wrap"><div class="stamp"><img src="${p.images[0]}" alt="${p.alt}" loading="lazy"></div></div>
           <span class="value-tag">${money(p.price)}</span>
         </div>
         ${p.images.length > 1 ? `<div class="thumbs" role="group" aria-label="${p.name} photos">${p.images
-          .map((img, i) => `<button type="button" class="thumb" data-img="${img}" aria-label="Photo ${i + 1} of ${p.images.length}" aria-current="${i === 0}"><img src="images/${img}" alt=""></button>`)
+          .map((img, i) => `<button type="button" class="thumb" data-img="${img}" aria-label="Photo ${i + 1} of ${p.images.length}" aria-current="${i === 0}"><img src="${img}" alt=""></button>`)
           .join("")}</div>` : ""}
       </div>
       <div>
@@ -45,7 +45,7 @@
     const main = art.querySelector(".stamp img");
     art.querySelectorAll(".thumb").forEach((t) =>
       t.addEventListener("click", () => {
-        main.src = "images/" + t.dataset.img;
+        main.src = t.dataset.img;
         art.querySelectorAll(".thumb").forEach((o) => o.setAttribute("aria-current", String(o === t)));
       })
     );
@@ -120,7 +120,7 @@
       const p = byId[id], q = cart.items[id];
       sub += p.price * q;
       return `<div class="line">
-        <img src="images/${p.images[0]}" alt="">
+        <img src="${p.images[0]}" alt="">
         <div>
           <div class="line-name">${p.name}</div>
           <div class="qty">
@@ -147,7 +147,7 @@
     btn.disabled = true;
     btn.textContent = "Taking you to Stripe…";
     try {
-      const res = await fetch("/.netlify/functions/checkout", {
+      const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -155,12 +155,12 @@
           items: Object.entries(cart.items).map(([id, qty]) => ({ id, qty })),
         }),
       });
-      const res = await fetch("/api/checkout", {
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) throw new Error(data.error || "Checkout couldn't start. Please try again.");
       window.location.href = data.url;
     } catch (e) {
       err.textContent = e.message.startsWith("Failed to fetch")
-        ? "Checkout works once the site is live on Netlify. It can't run from a local file."
+        ? "Checkout couldn't be reached. Please try again."
         : e.message;
       err.hidden = false;
       btn.disabled = false;
