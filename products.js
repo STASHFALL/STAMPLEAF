@@ -109,6 +109,9 @@ const PRODUCTS = [
   },
 ];
 
+// Server side (the checkout function) joins the extra lots from products-more.js.
+// In the browser, products-more.js adds them itself.
 if (typeof module !== "undefined") {
+  PRODUCTS.push(...require("./products-more.js"));
   module.exports = { CONFIG, PRODUCTS };
 }

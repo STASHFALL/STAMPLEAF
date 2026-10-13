@@ -1,8 +1,23 @@
 (function () {
   const CART_KEY = "stampleaf-cart";
+  const SIZE_KEY = "stampleaf-text";
   const $ = (id) => document.getElementById(id);
   const money = (pence) => "£" + (pence / 100).toFixed(2);
   const byId = Object.fromEntries(PRODUCTS.map((p) => [p.id, p]));
+  const BADGES = { "jumbo-1000": "Our biggest lot", "vintage-100": "No folds or missing corners" };
+
+  // ---- Text size (remembered between visits) ----
+  const sizeBtns = document.querySelectorAll(".textsize button");
+  function setSize(size) {
+    document.documentElement.dataset.text = size;
+    sizeBtns.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.size === size)));
+    try { localStorage.setItem(SIZE_KEY, size); } catch (e) {}
+  }
+  sizeBtns.forEach((b) => b.addEventListener("click", () => setSize(b.dataset.size)));
+  try {
+    const s = localStorage.getItem(SIZE_KEY);
+    if (s === "large" || s === "xlarge") setSize(s);
+  } catch (e) {}
 
   // ---- Basket state (saved in this browser only) ----
   let cart = { items: {}, region: "uk" };
@@ -17,59 +32,145 @@
   } catch (e) { /* storage unavailable: basket just won't persist */ }
   const save = () => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (e) {} };
 
-  // ---- Products ----
+  // ---- Products: filter, sort, draw ----
   const grid = $("product-grid");
-  PRODUCTS.forEach((p) => {
-    const art = document.createElement("article");
-    art.className = "product";
-    art.innerHTML = `
-      <div class="product-photo">
-        <div class="photo-frame">
-          <div class="stamp-wrap"><div class="stamp"><img src="${p.images[0]}" alt="${p.alt}" loading="lazy"></div></div>
-          <span class="value-tag">${money(p.price)}</span>
+  let filter = "all", sort = "featured";
+
+  function visibleProducts() {
+    let list = PRODUCTS.slice();
+    if (filter === "under10") list = list.filter((p) => p.price < 1000);
+    if (filter === "over10") list = list.filter((p) => p.price >= 1000);
+    if (sort === "low") list.sort((a, b) => a.price - b.price);
+    if (sort === "high") list.sort((a, b) => b.price - a.price);
+    return list;
+  }
+
+  function drawProducts() {
+    const list = visibleProducts();
+    grid.innerHTML = "";
+    $("result-count").textContent = list.length === PRODUCTS.length
+      ? `Showing all ${list.length} lots`
+      : `Showing ${list.length} of ${PRODUCTS.length} lots`;
+    list.forEach((p) => {
+      const art = document.createElement("article");
+      art.className = "product";
+      art.innerHTML = `
+        <div class="product-photo">
+          <button type="button" class="photo-frame" data-zoom="${p.id}" aria-label="View bigger photos of ${p.name}">
+            <div class="stamp-wrap"><div class="stamp"><img src="${p.images[0]}" alt="${p.alt}" loading="lazy"></div></div>
+            <span class="zoom-hint" aria-hidden="true">Tap to enlarge</span>
+            <span class="value-tag">${money(p.price)}</span>
+          </button>
+          ${p.images.length > 1 ? `<div class="thumbs" role="group" aria-label="${p.name} photos">${p.images
+            .map((img, i) => `<button type="button" class="thumb" data-img="${img}" aria-label="Show photo ${i + 1} of ${p.images.length}" aria-current="${i === 0}"><img src="${img}" alt=""></button>`)
+            .join("")}</div>` : ""}
         </div>
-        ${p.images.length > 1 ? `<div class="thumbs" role="group" aria-label="${p.name} photos">${p.images
-          .map((img, i) => `<button type="button" class="thumb" data-img="${img}" aria-label="Photo ${i + 1} of ${p.images.length}" aria-current="${i === 0}"><img src="${img}" alt=""></button>`)
-          .join("")}</div>` : ""}
-      </div>
-      <div>
-        <h3>${p.name}</h3>
-        <p class="tagline">${p.tagline}</p>
-      </div>
-      <p class="desc">${p.description}</p>
-      <dl class="facts">${p.facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
-      <div class="buy-row">
-        <span class="price">${money(p.price)}</span>
-        <button type="button" class="btn btn-primary" data-add="${p.id}">Add to basket</button>
-      </div>`;
-    const main = art.querySelector(".stamp img");
-    art.querySelectorAll(".thumb").forEach((t) =>
-      t.addEventListener("click", () => {
-        main.src = t.dataset.img;
-        art.querySelectorAll(".thumb").forEach((o) => o.setAttribute("aria-current", String(o === t)));
-      })
-    );
-    grid.appendChild(art);
-  });
+        ${BADGES[p.id] ? `<span class="badge">${BADGES[p.id]}</span>` : ""}
+        <div>
+          <h3>${p.name}</h3>
+          <p class="tagline">${p.tagline}</p>
+        </div>
+        <p class="desc">${p.description}</p>
+        <dl class="facts">${p.facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
+        <div class="buy-row">
+          <span class="price">${money(p.price)}</span>
+          <button type="button" class="btn btn-primary" data-add="${p.id}">Add to basket</button>
+        </div>`;
+      const main = art.querySelector(".stamp img");
+      art.querySelectorAll(".thumb").forEach((t) =>
+        t.addEventListener("click", () => {
+          main.src = t.dataset.img;
+          art.querySelector(".photo-frame").dataset.start = p.images.indexOf(t.dataset.img);
+          art.querySelectorAll(".thumb").forEach((o) => o.setAttribute("aria-current", String(o === t)));
+        })
+      );
+      grid.appendChild(art);
+    });
+  }
+
+  document.querySelectorAll(".chip").forEach((c) =>
+    c.addEventListener("click", () => {
+      filter = c.dataset.filter;
+      document.querySelectorAll(".chip").forEach((o) => o.setAttribute("aria-pressed", String(o === c)));
+      drawProducts();
+    })
+  );
+  $("sort").addEventListener("change", (e) => { sort = e.target.value; drawProducts(); });
+
+  // ---- Add to basket, with a clear confirmation ----
+  let toastTimer;
+  function showToast(msg) {
+    $("toast-msg").textContent = msg;
+    $("toast").hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { $("toast").hidden = true; }, 6000);
+  }
   grid.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-add]");
-    if (!btn) return;
-    const id = btn.dataset.add;
-    cart.items[id] = Math.min(20, (cart.items[id] || 0) + 1);
-    save(); render(); openBasket();
+    const add = e.target.closest("[data-add]");
+    if (add) {
+      const id = add.dataset.add;
+      cart.items[id] = Math.min(20, (cart.items[id] || 0) + 1);
+      save(); render();
+      add.classList.add("added");
+      add.textContent = "Added ✓";
+      setTimeout(() => { add.classList.remove("added"); add.textContent = "Add to basket"; }, 1800);
+      const b = $("open-basket");
+      b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");
+      showToast(`Added: ${byId[id].name}`);
+      return;
+    }
+    const zoom = e.target.closest("[data-zoom]");
+    if (zoom) openLightbox(zoom.dataset.zoom, Number(zoom.dataset.start || 0));
+  });
+  $("toast-view").addEventListener("click", () => { $("toast").hidden = true; openBasket(); });
+
+  // ---- Photo viewer ----
+  const lb = $("lightbox");
+  let lbList = [], lbIndex = 0, lbProduct = null;
+  function lbShow() {
+    $("lb-img").src = lbList[lbIndex];
+    $("lb-img").alt = lbProduct.alt;
+    $("lb-caption").textContent = `${lbProduct.name} (photo ${lbIndex + 1} of ${lbList.length})`;
+    $("lb-prev").hidden = $("lb-next").hidden = lbList.length < 2;
+  }
+  function openLightbox(id, start) {
+    lbProduct = byId[id]; lbList = lbProduct.images; lbIndex = start || 0;
+    lbShow();
+    if (typeof lb.showModal === "function") lb.showModal(); else lb.setAttribute("open", "");
+  }
+  $("lb-prev").addEventListener("click", () => { lbIndex = (lbIndex + lbList.length - 1) % lbList.length; lbShow(); });
+  $("lb-next").addEventListener("click", () => { lbIndex = (lbIndex + 1) % lbList.length; lbShow(); });
+  $("lb-close").addEventListener("click", () => lb.close());
+  lb.addEventListener("click", (e) => { if (e.target === lb) lb.close(); });
+  lb.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") $("lb-prev").click();
+    if (e.key === "ArrowRight") $("lb-next").click();
   });
 
-  // ---- Postage table and region picker ----
-  const regionSel = $("region");
+  // ---- Postage: checker, table and the basket's region picker ----
+  const regionSel = $("region"), regionChk = $("region-check");
+  const rows = {};
   Object.entries(CONFIG.regions).forEach(([key, r]) => {
-    regionSel.add(new Option(`${r.label} (${money(r.price)})`, key));
+    const label = `${r.label} (${money(r.price)})`;
+    regionSel.add(new Option(label, key));
+    regionChk.add(new Option(r.label, key));
     const tr = document.createElement("tr");
     if (key === "uk") tr.className = "home";
     tr.innerHTML = `<th scope="row">${r.label}</th><td>${r.days[0]} to ${r.days[1]} working days</td><td>${money(r.price)}</td>`;
     $("rates-body").appendChild(tr);
+    rows[key] = tr;
   });
-  regionSel.value = cart.region;
-  regionSel.addEventListener("change", () => { cart.region = regionSel.value; save(); render(); });
+  function syncRegion() {
+    const r = CONFIG.regions[cart.region];
+    regionSel.value = cart.region;
+    regionChk.value = cart.region;
+    $("chk-price").textContent = money(r.price);
+    $("chk-days").textContent = `postage to ${r.label}, arriving in ${r.days[0]} to ${r.days[1]} working days`;
+    Object.entries(rows).forEach(([k, tr]) => tr.classList.toggle("picked", k === cart.region));
+  }
+  [regionSel, regionChk].forEach((sel) =>
+    sel.addEventListener("change", () => { cart.region = sel.value; save(); render(); })
+  );
 
   // ---- Basket drawer ----
   const drawer = $("basket"), scrim = $("scrim");
@@ -103,6 +204,7 @@
   });
 
   function render() {
+    syncRegion();
     const ids = Object.keys(cart.items);
     const count = ids.reduce((n, id) => n + cart.items[id], 0);
     $("basket-count").textContent = count;
@@ -177,5 +279,6 @@
     c.innerHTML = `Questions? <a href="mailto:${CONFIG.contactEmail}">${CONFIG.contactEmail}</a>`;
   }
 
+  drawProducts();
   render();
 })();
